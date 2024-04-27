@@ -38,7 +38,7 @@ if __name__ == "__main__":
         training_tokens=1_000_000 * 10,
         store_batch_size=32,
         # Resampling protocol
-        use_ghost_grads=True,
+        use_ghost_grads=False,
         feature_sampling_window=3000,  # in steps
         dead_feature_window=5000,
         dead_feature_threshold=1e-8,
