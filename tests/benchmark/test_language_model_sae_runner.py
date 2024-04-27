@@ -16,6 +16,7 @@ def test_language_model_sae_runner():
     else:
         device = "cpu"
 
+    print(f"Using device: {device}")
     cfg = LanguageModelSAERunnerConfig(
         # Data Generating Function (Model + Training Distibuion)
         model_name="gelu-2l",
@@ -43,8 +44,9 @@ def test_language_model_sae_runner():
         dead_feature_threshold=1e-8,
         # WANDB
         log_to_wandb=True,
-        wandb_project="mats_sae_training_benchmarks",
+        wandb_project="polar",
         wandb_entity=None,
+        wandb_log_frequency=100,
         # Misc
         device=device,
         seed=42,
@@ -53,6 +55,7 @@ def test_language_model_sae_runner():
         dtype=torch.float32,
     )
 
+    print("training")
     sparse_autoencoder = language_model_sae_runner(cfg)
 
     assert sparse_autoencoder is not None
