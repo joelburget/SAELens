@@ -1,7 +1,11 @@
 import torch
+import os
 
 from sae_lens.training.config import LanguageModelSAERunnerConfig
 from sae_lens.training.lm_runner import language_model_sae_runner
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
 def test_language_model_sae_runner():
