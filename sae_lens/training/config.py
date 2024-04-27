@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional, cast
+from typing import Any, Optional, Tuple, cast
 
 import torch
 import wandb
@@ -68,7 +68,8 @@ class LanguageModelSAERunnerConfig:
     adam_beta2: float | list[float] = 0.999
 
     ## Loss Function
-    mse_loss_normalization: Optional[str] = None
+    cosine_loss_coefficient: float | list[float] = 1
+    magnitude_loss_coefficient: float | list[float] = 0.2
     l1_coefficient: float | list[float] = 1e-3
     lp_norm: float | list[float] = 1
 

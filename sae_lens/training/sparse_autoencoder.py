@@ -24,7 +24,8 @@ class ForwardOutput(NamedTuple):
     sae_out: torch.Tensor
     feature_acts: torch.Tensor
     loss: torch.Tensor
-    mse_loss: torch.Tensor
+    cosine_loss: torch.Tensor
+    magnitude_loss: torch.Tensor
     l1_loss: torch.Tensor
     ghost_grad_loss: torch.Tensor
 
@@ -35,7 +36,6 @@ class SparseAutoencoder(HookedRootModule):
     l1_coefficient: float
     lp_norm: float
     d_sae: int
-    use_ghost_grads: bool
     normalize_sae_decoder: bool
     hook_point_layer: int
     dtype: torch.dtype
@@ -61,7 +61,6 @@ class SparseAutoencoder(HookedRootModule):
         assert not isinstance(cfg.lr, list)
         assert not isinstance(cfg.lr_scheduler_name, list)
         assert not isinstance(cfg.lr_warm_up_steps, list)
-        assert not isinstance(cfg.use_ghost_grads, list)
         assert not isinstance(cfg.hook_point_layer, list)
         assert (
             "{layer}" not in cfg.hook_point
@@ -72,7 +71,6 @@ class SparseAutoencoder(HookedRootModule):
         self.lp_norm = cfg.lp_norm
         self.dtype = cfg.dtype
         self.device = cfg.device
-        self.use_ghost_grads = cfg.use_ghost_grads
         self.normalize_sae_decoder = cfg.normalize_sae_decoder
         self.hook_point_layer = cfg.hook_point_layer
         self.noise_scale = cfg.noise_scale
@@ -149,38 +147,25 @@ class SparseAutoencoder(HookedRootModule):
             + self.b_dec
         )
 
-        # add config for whether l2 is normalized:
-        per_item_mse_loss = _per_item_mse_loss_with_target_norm(
-            sae_out, x, self.cfg.mse_loss_normalization
-        )
-        ghost_grad_loss = torch.tensor(0.0, dtype=self.dtype, device=self.device)
-        # gate on config and training so evals is not slowed down.
-        if (
-            self.use_ghost_grads
-            and self.training
-            and dead_neuron_mask is not None
-            and dead_neuron_mask.sum() > 0
-        ):
-            ghost_grad_loss = self.calculate_ghost_grad_loss(
-                x=x,
-                sae_out=sae_out,
-                per_item_mse_loss=per_item_mse_loss,
-                hidden_pre=hidden_pre,
-                dead_neuron_mask=dead_neuron_mask,
-            )
-
-        mse_loss = per_item_mse_loss.mean()
         sparsity = feature_acts.norm(p=self.lp_norm, dim=1).mean(dim=(0,))
         l1_loss = self.l1_coefficient * sparsity
-        loss = mse_loss + l1_loss + ghost_grad_loss
+        cosine_loss = (
+            torch.nn.functional.cosine_similarity(sae_out, x, dim=-1).mean()
+            * self.cfg.cosine_loss_coefficient
+        )
+        magnitude_loss = (
+            (sae_out.norm(dim=-1) - x.norm(dim=-1)) / x.norm(dim=-1)
+        ).mean() * self.cfg.magnitude_loss_coefficient
+        loss = cosine_loss + magnitude_loss + l1_loss
 
         return ForwardOutput(
             sae_out=sae_out,
             feature_acts=feature_acts,
             loss=loss,
-            mse_loss=mse_loss,
+            cosine_loss=cosine_loss,
+            magnitude_loss=magnitude_loss,
             l1_loss=l1_loss,
-            ghost_grad_loss=ghost_grad_loss,
+            ghost_grad_loss=torch.tensor(0.0, dtype=self.dtype, device=self.device),
         )
 
     @torch.no_grad()
@@ -248,7 +233,6 @@ class SparseAutoencoder(HookedRootModule):
         print(f"Saved model to {path}")
 
     def save_model(self, path: str, sparsity: Optional[torch.Tensor] = None):
-
         if not os.path.exists(path):
             os.mkdir(path)
 
@@ -335,7 +319,6 @@ class SparseAutoencoder(HookedRootModule):
 
     @classmethod
     def load_from_pretrained(cls, path: str, device: str = "cpu"):
-
         config_path = os.path.join(path, "cfg.json")
         weight_path = os.path.join(path, "sae_weights.safetensors")
 
@@ -369,55 +352,3 @@ class SparseAutoencoder(HookedRootModule):
     def get_name(self):
         sae_name = f"sparse_autoencoder_{self.cfg.model_name}_{self.cfg.hook_point}_{self.cfg.d_sae}"
         return sae_name
-
-    def calculate_ghost_grad_loss(
-        self,
-        x: torch.Tensor,
-        sae_out: torch.Tensor,
-        per_item_mse_loss: torch.Tensor,
-        hidden_pre: torch.Tensor,
-        dead_neuron_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        # 1.
-        residual = x - sae_out
-        l2_norm_residual = torch.norm(residual, dim=-1)
-
-        # 2.
-        feature_acts_dead_neurons_only = torch.exp(hidden_pre[:, dead_neuron_mask])
-        ghost_out = feature_acts_dead_neurons_only @ self.W_dec[dead_neuron_mask, :]
-        l2_norm_ghost_out = torch.norm(ghost_out, dim=-1)
-        norm_scaling_factor = l2_norm_residual / (1e-6 + l2_norm_ghost_out * 2)
-        ghost_out = ghost_out * norm_scaling_factor[:, None].detach()
-
-        # 3.
-        per_item_mse_loss_ghost_resid = _per_item_mse_loss_with_target_norm(
-            ghost_out, residual.detach(), self.cfg.mse_loss_normalization
-        )
-        mse_rescaling_factor = (
-            per_item_mse_loss / (per_item_mse_loss_ghost_resid + 1e-6)
-        ).detach()
-        per_item_mse_loss_ghost_resid = (
-            mse_rescaling_factor * per_item_mse_loss_ghost_resid
-        )
-
-        return per_item_mse_loss_ghost_resid.mean()
-
-
-def _per_item_mse_loss_with_target_norm(
-    preds: torch.Tensor,
-    target: torch.Tensor,
-    mse_loss_normalization: Optional[str] = None,
-) -> torch.Tensor:
-    """
-    Calculate MSE loss per item in the batch, without taking a mean.
-    Then, normalizes by the L2 norm of the centered target.
-    This normalization seems to improve performance.
-    """
-    if mse_loss_normalization == "dense_batch":
-        target_centered = target - target.mean(dim=0, keepdim=True)
-        normalization = target_centered.norm(dim=-1, keepdim=True)
-        return torch.nn.functional.mse_loss(preds, target, reduction="none") / (
-            normalization + 1e-6
-        )
-    else:
-        return torch.nn.functional.mse_loss(preds, target, reduction="none")
