@@ -21,4 +21,5 @@ if __name__ == "__main__":
         # wandb_artifact_path="joelb/polar/dashboard",
         # use_wandb=True,
     )
+    runner.init_sae_session()
     runner.run()
