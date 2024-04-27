@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     runner = DashboardRunner(
         sae_path=sae_path,
-        wandb_artifact_path="joelb/polar/dashboard",
-        use_wandb=True,
+        # wandb_artifact_path="joelb/polar/dashboard",
+        # use_wandb=True,
     )
     runner.run()
