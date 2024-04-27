@@ -8,7 +8,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
-def test_language_model_sae_runner():
+if __name__ == "__main__":
     if torch.cuda.is_available():
         device = "cuda"
     elif torch.backends.mps.is_available():
