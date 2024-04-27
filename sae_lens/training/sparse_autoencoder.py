@@ -150,11 +150,10 @@ class SparseAutoencoder(HookedRootModule):
         sparsity = feature_acts.norm(p=self.lp_norm, dim=1).mean(dim=(0,))
         l1_loss = self.l1_coefficient * sparsity
         cosine_loss = (
-            torch.nn.functional.cosine_similarity(sae_out, x, dim=-1).mean()
-            * self.cfg.cosine_loss_coefficient
-        )
+            1 - torch.nn.functional.cosine_similarity(sae_out, x, dim=-1).mean()
+        ) * self.cfg.cosine_loss_coefficient
         magnitude_loss = (
-            (sae_out.norm(dim=-1) - x.norm(dim=-1)) / x.norm(dim=-1)
+            abs(sae_out.norm(dim=-1) - x.norm(dim=-1)) / x.norm(dim=-1)
         ).mean() * self.cfg.magnitude_loss_coefficient
         loss = cosine_loss + magnitude_loss + l1_loss
 
