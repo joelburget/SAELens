@@ -1,6 +1,5 @@
 import torch
 
-# from sae_lens.training.session_loader import LMSparseAutoencoderSessionloader
 from sae_lens.analysis.dashboard_runner import DashboardRunner
 
 if __name__ == "__main__":
@@ -12,14 +11,6 @@ if __name__ == "__main__":
         device = "cpu"
 
     sae_path = "checkpoints/klnkkga3/final/gelu-2l_blocks.0.hook_mlp_out_8192_/"
-    # model, sparse_autoencoder, activation_store = (
-    #     LMSparseAutoencoderSessionloader.load_pretrained_sae(path=sae_path)
-    # )
-
-    runner = DashboardRunner(
-        sae_path=sae_path,
-        # wandb_artifact_path="joelb/polar/dashboard",
-        # use_wandb=True,
-    )
+    runner = DashboardRunner(sae_path=sae_path)
     runner.init_sae_session()
     runner.run()
