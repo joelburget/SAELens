@@ -1,14 +1,10 @@
 import torch
-import os
 
 from sae_lens.training.config import LanguageModelSAERunnerConfig
 from sae_lens.training.lm_runner import language_model_sae_runner
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-
-if __name__ == "__main__":
+def test_language_model_sae_runner():
     if torch.cuda.is_available():
         device = "cuda"
     elif torch.backends.mps.is_available():
@@ -16,7 +12,6 @@ if __name__ == "__main__":
     else:
         device = "cpu"
 
-    print(f"Using device: {device}")
     cfg = LanguageModelSAERunnerConfig(
         # Data Generating Function (Model + Training Distibuion)
         model_name="gelu-2l",
@@ -38,15 +33,14 @@ if __name__ == "__main__":
         training_tokens=1_000_000 * 10,
         store_batch_size=32,
         # Resampling protocol
-        use_ghost_grads=False,
+        use_ghost_grads=True,
         feature_sampling_window=3000,  # in steps
         dead_feature_window=5000,
         dead_feature_threshold=1e-8,
         # WANDB
         log_to_wandb=True,
-        wandb_project="polar",
+        wandb_project="mats_sae_training_benchmarks",
         wandb_entity=None,
-        wandb_log_frequency=100,
         # Misc
         device=device,
         seed=42,
@@ -55,7 +49,6 @@ if __name__ == "__main__":
         dtype=torch.float32,
     )
 
-    print("training")
     sparse_autoencoder = language_model_sae_runner(cfg)
 
     assert sparse_autoencoder is not None

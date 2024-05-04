@@ -29,6 +29,7 @@ from sae_lens.training.session_loader import LMSparseAutoencoderSessionloader
 
 
 class DashboardRunner:
+
     model: HookedTransformer | None = None
 
     def __init__(
@@ -368,9 +369,6 @@ class DashboardRunner:
                     tokens=tokens,
                     cfg=feature_vis_params,
                 )
-
-                # hack?
-                feature_data.model = self.model
 
                 for i, test_idx in enumerate(feature_data.feature_data_dict.keys()):
                     feature_data.save_feature_centric_vis(
