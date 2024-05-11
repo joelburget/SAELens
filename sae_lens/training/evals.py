@@ -59,7 +59,7 @@ def run_evals(
     else:
         original_act = cache[hook_point]
 
-    sae_out, _, _, _, _, _ = sparse_autoencoder(original_act)
+    sae_out, _, _, _, _, _, _, _ = sparse_autoencoder(original_act)
     del cache
 
     if "cuda" in str(model.cfg.device):

@@ -36,6 +36,8 @@ class ForwardOutput(NamedTuple):
     mse_loss: torch.Tensor
     l1_loss: torch.Tensor
     ghost_grad_loss: torch.Tensor | float
+    cosine_loss: torch.Tensor
+    magnitude_loss: torch.Tensor
 
 
 class SparseAutoencoder(HookedRootModule):
@@ -263,7 +265,13 @@ class SparseAutoencoder(HookedRootModule):
         mse_loss = per_item_mse_loss.sum(dim=-1).mean()
         sparsity = self.get_sparsity_loss_term(feature_acts)
         l1_loss = (self.l1_coefficient * sparsity).mean()
-        loss = mse_loss + l1_loss + ghost_grad_loss
+        cosine_loss = (
+            1 - torch.nn.functional.cosine_similarity(sae_out, x, dim=-1).mean()
+        ) * self.cfg.cosine_loss_coefficient
+        magnitude_loss = (
+            abs(sae_out.norm(dim=-1) - x.norm(dim=-1)) / x.norm(dim=-1)
+        ).mean() * self.cfg.magnitude_loss_coefficient
+        loss = cosine_loss + magnitude_loss + l1_loss + ghost_grad_loss
 
         return ForwardOutput(
             sae_out=sae_out,
@@ -272,6 +280,8 @@ class SparseAutoencoder(HookedRootModule):
             mse_loss=mse_loss,
             l1_loss=l1_loss,
             ghost_grad_loss=ghost_grad_loss,
+            cosine_loss=cosine_loss,
+            magnitude_loss=magnitude_loss,
         )
 
     @torch.no_grad()

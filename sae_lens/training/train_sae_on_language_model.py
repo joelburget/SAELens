@@ -66,7 +66,6 @@ class SAETrainContext:
         return _log_feature_sparsity(self.feature_sparsity)
 
     def begin_finetuning(self, sae: SparseAutoencoder):
-
         # finetuning method should be set in the config
         # if not, then we don't finetune
         if not isinstance(sae.cfg.finetuning_method, str):
@@ -284,6 +283,8 @@ def train_sae_group_on_language_model(
             training_run_state.n_training_tokens += batch_size
 
             mse_losses: list[torch.Tensor] = []
+            cosine_losses: list[torch.Tensor] = []
+            magnitude_losses: list[torch.Tensor] = []
             l1_losses: list[torch.Tensor] = []
 
             for name, sparse_autoencoder in sae_group.autoencoders.items():
@@ -302,6 +303,8 @@ def train_sae_group_on_language_model(
                     autocast=autocast,
                 )
                 mse_losses.append(step_output.mse_loss)
+                cosine_losses.append(step_output.cosine_loss)
+                magnitude_losses.append(step_output.magnitude_loss)
                 l1_losses.append(step_output.l1_loss)
 
                 if use_wandb:
@@ -355,7 +358,7 @@ def train_sae_group_on_language_model(
             training_run_state.n_training_steps += 1
             if training_run_state.n_training_steps % 100 == 0:
                 pbar.set_description(
-                    f"{training_run_state.n_training_steps}| MSE Loss {torch.stack(mse_losses).mean().item():.3f} | L1 {torch.stack(l1_losses).mean().item():.3f}"
+                    f"{training_run_state.n_training_steps}| MSE Loss {torch.stack(mse_losses).mean().item():.3f} | Cosine Loss {torch.stack(cosine_losses).mean().item():.3f} | Magnitude Loss {torch.stack(magnitude_losses).mean().item():.3f} | L1 {torch.stack(l1_losses).mean().item():.3f}"
                 )
             pbar.update(batch_size)
 
@@ -537,6 +540,8 @@ class TrainStepOutput:
     feature_acts: torch.Tensor
     loss: torch.Tensor
     mse_loss: torch.Tensor
+    cosine_loss: torch.Tensor
+    magnitude_loss: torch.Tensor
     l1_loss: torch.Tensor
     ghost_grad_loss: torch.Tensor
     ghost_grad_neuron_mask: torch.Tensor
@@ -615,6 +620,8 @@ def _train_step(
             mse_loss,
             l1_loss,
             ghost_grad_loss,
+            cosine_loss,
+            magnitude_loss,
         ) = sparse_autoencoder(
             sae_in,
             ghost_grad_neuron_mask,
@@ -654,6 +661,8 @@ def _train_step(
         l1_loss=l1_loss,
         ghost_grad_loss=ghost_grad_loss,
         ghost_grad_neuron_mask=ghost_grad_neuron_mask,
+        cosine_loss=cosine_loss,
+        magnitude_loss=magnitude_loss,
     )
 
 
@@ -671,6 +680,8 @@ def _build_train_step_log_dict(
     l1_loss = output.l1_loss
     ghost_grad_loss = output.ghost_grad_loss
     loss = output.loss
+    cosine_loss = output.cosine_loss
+    magnitude_loss = output.magnitude_loss
     ghost_grad_neuron_mask = output.ghost_grad_neuron_mask
 
     # metrics for currents acts
@@ -688,6 +699,8 @@ def _build_train_step_log_dict(
         f"losses/mse_loss{wandb_suffix}": mse_loss.item(),
         f"losses/l1_loss{wandb_suffix}": l1_loss.item()
         / sparse_autoencoder.l1_coefficient,  # normalize by l1 coefficient
+        f"losses/cosine_loss{wandb_suffix}": cosine_loss.item(),
+        f"losses/magnitude_loss{wandb_suffix}": magnitude_loss.item(),
         f"losses/ghost_grad_loss{wandb_suffix}": ghost_grad_loss,
         f"losses/overall_loss{wandb_suffix}": loss.item(),
         # variance explained
@@ -756,7 +769,6 @@ def _save_checkpoint(
     checkpoint_name: int | str,
     wandb_aliases: list[str] | None = None,
 ) -> str:
-
     checkpoint_path = f"{sae_group.cfg.checkpoint_path}/{checkpoint_name}"
     training_run_state.checkpoint_paths.append(checkpoint_path)
     os.makedirs(checkpoint_path, exist_ok=True)
@@ -785,7 +797,6 @@ def _save_checkpoint(
         wandb.log_artifact(activation_store_artifact)
 
     for name, sae in sae_group.autoencoders.items():
-
         ctx = train_contexts[name]
         path = f"{checkpoint_path}/{name}"
         os.makedirs(path, exist_ok=True)
