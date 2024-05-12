@@ -268,8 +268,9 @@ class SparseAutoencoder(HookedRootModule):
         cosine_loss = (
             1 - torch.nn.functional.cosine_similarity(sae_out, x, dim=-1).mean()
         ) * self.cfg.cosine_loss_coefficient
+        x_norm = x.norm(dim=-1)
         magnitude_loss = (
-            abs(sae_out.norm(dim=-1) - x.norm(dim=-1)) / x.norm(dim=-1)
+            (sae_out.norm(dim=-1) - x_norm) ** 2
         ).mean() * self.cfg.magnitude_loss_coefficient
         loss = cosine_loss + magnitude_loss + l1_loss + ghost_grad_loss
 
